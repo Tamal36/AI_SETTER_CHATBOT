@@ -1,0 +1,171 @@
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class LLMService:
+    """
+    Dual-model LLM service:
+    - Stage 1 (Brain): correctness & structure
+    - Stage 2 (Voice): human Jamie tone
+    """
+
+    def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is not set")
+
+        self.client = OpenAI(api_key=api_key)
+
+        # ---- MODELS ----
+        self.brain_model = "gpt-5.2"   # SAFE + AVAILABLE
+        self.voice_model = (
+            "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
+        )
+
+        # ---- GENERATION PARAMS ----
+        self.brain_temperature = 0.2
+        self.voice_temperature = 0.5
+        self.max_output_tokens = 120
+
+        # Feature flag (IMPORTANT)
+        self.use_voice_model = True
+
+    # ----------------------------
+    # RESPONSE EXTRACTION
+    # ----------------------------
+    def _extract_text(self, response) -> str:
+        """
+        Safely extract text from OpenAI Responses API output.
+        Works with dict-based and object-based SDK outputs.
+        """
+        texts = []
+        for item in response.output:
+            item_type = getattr(item, "type", None)
+
+            if item_type == "output_text":
+                if item.text:
+                    texts.append(item.text)
+
+            elif item_type == "message":
+                for content in getattr(item, "content", []):
+                    if getattr(content, "type", None) == "output_text":
+                        texts.append(content.text)
+
+        return " ".join(texts).strip()
+
+    # ----------------------------
+    # STAGE 1 — BRAIN
+    # ----------------------------
+    def _prepare_response(self, system_prompt, state_prompt, user_message) -> str:
+        """
+        Uses GPT-4.1-mini to generate a correct, helpful draft response.
+        This output is NOT shown to the user.
+        """
+        response = self.client.responses.create(
+            model=self.brain_model,
+            temperature=self.brain_temperature,
+            max_output_tokens=self.max_output_tokens,
+            input=[
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [{
+                        "type": "input_text",
+                        "text": f"{state_prompt}\n\nUser message:\n{user_message}",
+                    }],
+                },
+            ],
+        )
+
+        return self._extract_text(response)
+
+    # ----------------------------
+    # STAGE 2 — VOICE
+    # ----------------------------
+    def _rewrite_human_tone(self, draft_text: str) -> str:
+        """
+        Uses the fine-tuned model to rewrite text in a natural human tone.
+        No system prompt — tone is learned from fine-tuning.
+        """
+
+        response = self.client.responses.create(
+            model=self.voice_model,
+            temperature=self.voice_temperature,
+            max_output_tokens=self.max_output_tokens,
+            input=[
+                {
+                    "role": "user",
+                    "content": [{
+                        "type": "input_text",
+                        "text": (
+                            "Rewrite the following message naturally, "
+                            "as Jamie — calm, grounded, human. "
+                            "Do not add new ideas. "
+                            "Do not add extra questions.keep it concise\n\n"
+                            f"{draft_text}"
+                        ),
+                    }],
+                },
+            ],
+        )
+
+        return self._extract_text(response)
+
+    # ----------------------------
+    # VALIDATION
+    # ----------------------------
+    def _validate_final_response(self, text: str) -> bool:
+        if not text:
+            return False
+
+        if text.count("?") > 1:
+            return False
+
+        if len(text.split()) > 40:
+            return False
+
+        forbidden = [
+            "price", "cost", "buy", "sign up",
+            "guarantee", "limited", "program"
+        ]
+        lower = text.lower()
+        return not any(p in lower for p in forbidden)
+
+    # ----------------------------
+    # PUBLIC API
+    # ----------------------------
+    def generate_response(self, system_prompt, state_prompt, user_message) -> str:
+        # Stage 1
+        """
+        Full two-stage generation:
+        1. GPT-4.1-mini prepares the response
+        2. Fine-tuned model rewrites it in human tone
+        """
+        
+        draft = self._prepare_response(
+            system_prompt=system_prompt,
+            state_prompt=state_prompt,
+            user_message=user_message,
+        )
+
+        # HARD GUARD
+        if not draft:
+            return "Hmm, can you say a bit more about that?"
+
+        # Single-model fallback
+        if not self.use_voice_model:
+            return draft
+
+        # Stage 2
+        rewritten = self._rewrite_human_tone(draft)
+
+        if not self._validate_final_response(rewritten):
+            return draft
+
+        return rewritten

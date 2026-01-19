@@ -192,7 +192,7 @@ class LLMService:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini", # Fast and smart enough
+                model="gpt-5.2", # Fast and smart enough
                 temperature=0.0,     # Deterministic
                 messages=[
                     {"role": "system", "content": f"You are a data extractor. {prompts[attribute_type]}"},

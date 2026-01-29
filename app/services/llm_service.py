@@ -1,5 +1,4 @@
 # JamieBot/app/services/llm_service.py
-# JamieBot/app/services/llm_service.py
 import os
 import logging
 import re
@@ -16,7 +15,7 @@ class LLMService:
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
         # ---- MODELS ----
-        self.brain_model = "gpt-5.2" # or "gpt-5.2" if you have access
+        self.brain_model = "gpt-5.2" 
         self.voice_model = (
             "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
         )
@@ -31,8 +30,7 @@ class LLMService:
         2. Removes dashes.
         3. Enforces lowercase start.
         """
-        if not text: 
-            return ""
+        if not text: return ""
         
         # 1. Strip the overused openers
         text = re.sub(r'^(hey there|hi there|hey|hi|got it|sure thing|makes sense|totally|that makes sense)[\.,\s]+(\.\.\.)?\s*', '', text, flags=re.IGNORECASE)
@@ -54,12 +52,7 @@ class LLMService:
         Injects History into the context window.
         """
         messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add last 10 messages of history for context
-        # (This solves the Amnesia bug)
         messages.extend(history[-10:])
-        
-        # Add current instructions + current message
         final_prompt = f"{state_prompt}\n\n[CURRENT USER MESSAGE]:\n{user_message}"
         messages.append({"role": "user", "content": final_prompt})
 
@@ -93,9 +86,8 @@ class LLMService:
 
     # --- PUBLIC API ---
     def generate_response(self, system_prompt: str, state_prompt: str, user_message: str, history: List[Dict]) -> str:
-        # 1. Generate Draft (With History)
+        # 1. Generate Draft
         draft = self._prepare_response(system_prompt, state_prompt, user_message, history)
-        
         if not draft: return "Hmm, tell me more."
 
         # 2. Voice Rewrite
@@ -109,10 +101,7 @@ class LLMService:
     def extract_attribute(self, text: str, attribute_type: str) -> str | None:
         """
         Uses LLM to classify user input into fixed categories.
-        Returns None if the user was vague/unclear.
         """
-        
-        # Define the rules for each type
         prompts = {
             "location": (
                 "Extract the location region.\n"
@@ -142,56 +131,44 @@ class LLMService:
             "finance": (
                 "Classify financial status regarding coaching.\n"
                 "Categories:\n"
-                "- 'LOW' (broke, paycheck to paycheck, struggling, student, no money, tight)\n"
+                "- 'LOW' (broke, paycheck to paycheck, struggling, student, no money, tight, 'cant afford')\n"
                 "- 'HIGH' (good, doing well, comfortable, savings, invest, happy with it, stable, money is fine)\n"
                 "Return 'LOW', 'HIGH', or 'UNKNOWN'."
+            ),
+            "age": (
+                "Extract the age as a number.\n"
+                "Example: 'I am 26' -> '26'\n"
+                "Example: 'two and eight' -> '28'\n"
+                "Example: 'eleven' -> '11'\n"
+                "If not found, return 'UNKNOWN'."
             )
         }
         
-        if attribute_type not in prompts:
-            return None
+        if attribute_type not in prompts: return None
         
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini", 
-                temperature=0.0,     # Deterministic
+                temperature=0.0,
                 messages=[
                     {"role": "system", "content": f"You are a data classifier. {prompts[attribute_type]}"},
                     {"role": "user", "content": text}
                 ]
             )
             result = response.choices[0].message.content.strip().upper()
-            
-            # Clean up potential punctuation (e.g. "EU.")
-            result = re.sub(r'[^A-Z]', '', result)
-
-            if "UNKNOWN" in result:
-                return None
+            result = re.sub(r'[^A-Z0-9]', '', result)
+            if "UNKNOWN" in result: return None
             return result
-            
         except Exception as e:
             logger.error(f"Extraction Error: {e}")
             return None
-    
-    # In app/services/llm_service.py
 
     def check_off_topic(self, user_message: str) -> str | None:
-        """
-        Detects if the user is asking a meta-question (Identity, Reality, Why).
-        Returns a specific scripted response if detected, otherwise None.
-        """
-        
-        # 1. Identity Check (Client specific rule from PDF)
-        # "If someone asks if the bot is Jamie..."
         identity_keywords = ["are you real", "are you really jamie", "is this a bot", "is this ai", "who is this", "are you human"]
         if any(k in user_message.lower() for k in identity_keywords):
             return "oh no, sorry, i’m amanda, her assistant. i monitor her social accounts. it’s nice to meet you :)"
 
-        # 2. "Why" Check (Defensiveness)
         if "why are you asking" in user_message.lower() or "why do you need to know" in user_message.lower():
             return "just trying to get a better picture of where you're at so i can see if we can actually help."
-
-        # 3. Random/Nonsense Check (Optional - can be expanded)
-        # If they ask about weather, politics, etc, we can add logic here.
         
         return None

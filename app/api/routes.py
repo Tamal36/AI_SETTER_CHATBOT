@@ -26,19 +26,18 @@ def process_message(request: AIRequest):
             user_message=request.message,
             current_state=current_state,
             extracted_attributes=request.user_attributes,
-            history=history # <--- Context Injection
+            history=history 
         )
         
         # 4. Save Interaction to Redis (Memory)
-        # Save User Message
         redis_service.add_message(request.user_id, "user", request.message)
-        # Save Bot Reply
         redis_service.add_message(request.user_id, "assistant", result["reply"])
         
         return AIResponse(
             reply=result["reply"],
             next_state=result["next_state"],
             extracted_attributes=result.get("extracted_attributes"),
+            progress_score=result["progress_score"] # <--- ADDED THIS LINE
         )
         
     except ValueError as e:

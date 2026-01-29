@@ -1,6 +1,10 @@
 # JamieBot/app/schemas.py
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
+class Message(BaseModel):
+    role: str
+    content: str
 
 # INPUT SCHEMA (Request)
 class AIRequest(BaseModel):
@@ -11,10 +15,8 @@ class AIRequest(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user")
     message: str = Field(..., description="Latest message sent by the user")
     current_state: str = Field(..., description="Current conversation state (e.g., RAPPORT, QUAL_LOCATION)")
-    user_attributes: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Collected user attributes"
-    )
+    user_attributes: Optional[Dict[str, Any]] = Field(default=None, description="Collected user attributes")
+    history: Optional[List[Message]] = Field(default=[])
 
 # OUTPUT SCHEMA (Response)
 class AIResponse(BaseModel):
@@ -23,7 +25,6 @@ class AIResponse(BaseModel):
     """
     reply: str = Field(..., description="The message the AI should send to the user")
     next_state: str = Field(..., description="Next conversation state decided by the state machine")
-    extracted_attributes: Optional[Dict[str, Any]] = Field( # <--- Change str to Any
-        default=None,
-        description="New user attributes"
-    )
+    extracted_attributes: Optional[Dict[str, Any]] = Field(default=None, description="New user attributes")
+    # --- NEW FIELD ---
+    progress_score: int = Field(..., description="Lead progress from 0 to 100")

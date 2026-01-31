@@ -14,43 +14,25 @@ class LLMService:
             raise ValueError("OPENAI_API_KEY is not set")
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
-        # ---- MODELS ----
-        self.brain_model = "gpt-5.2" 
-        self.voice_model = (
-            "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
-        )
+        self.brain_model = "gpt-5.2"
+        self.voice_model = "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
         self.brain_temperature = 0.2
         self.voice_temperature = 0.5
         self.max_output_tokens = 150
         self.use_voice_model = True
 
     def _clean_formatting(self, text: str) -> str:
-        """
-        1. Strips repetitive openers.
-        2. Removes dashes.
-        3. Enforces lowercase start.
-        """
         if not text: return ""
-        
-        # 1. Strip the overused openers
         text = re.sub(r'^(hey there|hi there|hey|hi|got it|sure thing|makes sense|totally|that makes sense)[\.,\s]+(\.\.\.)?\s*', '', text, flags=re.IGNORECASE)
-        
-        # 2. Remove dashes
         text = text.replace("—", ", ").replace(" - ", ", ")
-        
-        # 3. Enforce lowercase start
         if text and len(text) > 0:
             text = text[0].lower() + text[1:]
-            
         return text.strip()
 
     def _extract_text(self, response) -> str:
         return response.choices[0].message.content.strip()
 
     def _prepare_response(self, system_prompt: str, state_prompt: str, user_message: str, history: List[Dict]) -> str:
-        """
-        Injects History into the context window.
-        """
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history[-10:])
         final_prompt = f"{state_prompt}\n\n[CURRENT USER MESSAGE]:\n{user_message}"
@@ -84,74 +66,28 @@ class LLMService:
         )
         return self._extract_text(response)
 
-    # --- PUBLIC API ---
     def generate_response(self, system_prompt: str, state_prompt: str, user_message: str, history: List[Dict]) -> str:
-        # 1. Generate Draft
         draft = self._prepare_response(system_prompt, state_prompt, user_message, history)
         if not draft: return "Hmm, tell me more."
-
-        # 2. Voice Rewrite
         if self.use_voice_model:
             draft = self._rewrite_human_tone(draft)
-        
-        # 3. Final Cleaning
         final_text = self._clean_formatting(draft)
         return final_text
 
     def extract_attribute(self, text: str, attribute_type: str) -> str | None:
-        """
-        Uses LLM to classify user input into fixed categories.
-        """
         prompts = {
-            "location": (
-                "Extract the location region.\n"
-                "Rules:\n"
-                "- If US, USA, United States, America -> Return 'US'\n"
-                "- If Canada -> Return 'CANADA'\n"
-                "- If UK, Europe, Germany, France, Italy, Spain, etc. -> Return 'EU'\n"
-                "- If anywhere else (Asia, Africa, Australia, South America) -> Return 'OTHER'\n"
-                "- If unknown/not mentioned -> Return 'UNKNOWN'\n"
-                "Output one word only."
-            ),
-            "relationship_goal": (
-                "Classify the relationship goal.\n"
-                "Categories:\n"
-                "- 'SERIOUS' (marriage, long-term, real relationship, partner, committed, wife)\n"
-                "- 'CASUAL' (fun, short-term, seeing what's out there, hookup, vibe)\n"
-                "Return 'SERIOUS', 'CASUAL', or 'UNKNOWN'."
-            ),
-            "fitness": (
-                "Classify fitness level.\n"
-                "Categories:\n"
-                "- 'FIT' (gym, active, athletic, muscular, working out, built)\n"
-                "- 'AVERAGE' (decent, okay, normal, fine)\n"
-                "- 'UNFIT' (out of shape, overweight, no energy, lazy, not fit)\n"
-                "Return 'FIT', 'AVERAGE', 'UNFIT', or 'UNKNOWN'."
-            ),
-            "finance": (
-                "Classify financial status regarding coaching.\n"
-                "Categories:\n"
-                "- 'LOW' (broke, paycheck to paycheck, struggling, student, no money, tight, 'cant afford')\n"
-                "- 'HIGH' (good, doing well, comfortable, savings, invest, happy with it, stable, money is fine)\n"
-                "Return 'LOW', 'HIGH', or 'UNKNOWN'."
-            ),
-            "age": (
-                "Extract the age as a number.\n"
-                "Example: 'I am 26' -> '26'\n"
-                "Example: 'two and eight' -> '28'\n"
-                "Example: 'eleven' -> '11'\n"
-                "If not found, return 'UNKNOWN'."
-            )
+            "location": "Extract location: 'US', 'CANADA', 'EU', 'OTHER'.",
+            "relationship_goal": "Classify goal: 'SERIOUS', 'CASUAL'.",
+            "fitness": "Classify fitness: 'FIT', 'AVERAGE', 'UNFIT'.",
+            "finance": "Classify finance: 'LOW', 'HIGH' (savings/invest/comfortable).",
+            "age": "Extract age number (e.g., 26). Return 'UNKNOWN' if missing."
         }
-        
         if attribute_type not in prompts: return None
-        
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini", 
-                temperature=0.0,
+                model="gpt-4o-mini", temperature=0.0,
                 messages=[
-                    {"role": "system", "content": f"You are a data classifier. {prompts[attribute_type]}"},
+                    {"role": "system", "content": f"Data Classifier. {prompts[attribute_type]}"},
                     {"role": "user", "content": text}
                 ]
             )
@@ -164,11 +100,28 @@ class LLMService:
             return None
 
     def check_off_topic(self, user_message: str) -> str | None:
-        identity_keywords = ["are you real", "are you really jamie", "is this a bot", "is this ai", "who is this", "are you human"]
+        identity_keywords = ["are you real", "are you really jamie", "is this a bot", "is this ai", "who is this"]
         if any(k in user_message.lower() for k in identity_keywords):
             return "oh no, sorry, i’m amanda, her assistant. i monitor her social accounts. it’s nice to meet you :)"
-
-        if "why are you asking" in user_message.lower() or "why do you need to know" in user_message.lower():
+        if "why are you asking" in user_message.lower():
             return "just trying to get a better picture of where you're at so i can see if we can actually help."
-        
         return None
+
+    def classify_post_link_intent(self, text: str) -> str:
+        system_prompt = (
+            "Classify message intent:\n"
+            "- BOUGHT (e.g. 'I bought it', 'Done')\n"
+            "- QUESTION (e.g. 'Is it one time payment?')\n"
+            "- HESITATION (e.g. 'I will do it later')\n"
+            "- TECH_ISSUE (e.g. 'Link not working')\n"
+            "- NEGOTIATION (e.g. 'Discount?')\n"
+            "- OFF_TOPIC (e.g. 'Dating is hard')\n"
+            "Return ONLY the category name."
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini", temperature=0.0,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+            )
+            return response.choices[0].message.content.strip().upper()
+        except: return "OFF_TOPIC"

@@ -1,9 +1,7 @@
 # JamieBot/app/state_machine/transitions.py
 from typing import Dict, Optional
 from app.state_machine.states import ConversationState
-from app.state_machine.exit_rules import (
-    normalize_text, entry_boundary_action, should_exit_entry
-)
+from app.state_machine.exit_rules import normalize_text, entry_boundary_action, should_exit_entry
 
 def determine_next_state(
     current_state: ConversationState,
@@ -15,11 +13,12 @@ def determine_next_state(
     turns = extracted_attributes.get("current_state_turn_count", 0)
     normalized = normalize_text(user_message)
 
-    # --- ENTRY & SOCIAL ---
+    # --- ENTRY PHASE ---
     if current_state == ConversationState.ENTRY:
         action = entry_boundary_action(normalized, extracted_attributes)
         if action == "HARD_STOP": return ConversationState.END
         if action == "WARN_ABUSE": return ConversationState.ENTRY
+        
         if should_exit_entry(normalized): return ConversationState.STAGE_1_PATTERN
         if turns >= 1: return ConversationState.ENTRY_SOCIAL
         return ConversationState.ENTRY
@@ -27,7 +26,7 @@ def determine_next_state(
     if current_state == ConversationState.ENTRY_SOCIAL:
         return ConversationState.STAGE_1_PATTERN
 
-    # --- THE FUNNEL (LINEAR) ---
+    # --- FUNNEL PHASE ---
     if current_state == ConversationState.STAGE_1_PATTERN:
         if turns >= 2: return ConversationState.STAGE_2_TIME_COST
         return ConversationState.STAGE_1_PATTERN
@@ -39,59 +38,51 @@ def determine_next_state(
     if current_state == ConversationState.STAGE_6_GAP: return ConversationState.STAGE_7_REFRAME
     if current_state == ConversationState.STAGE_7_REFRAME: return ConversationState.STAGE_8_INTRO_COACHING
     
-    # Force move regardless of answer
     if current_state == ConversationState.STAGE_8_INTRO_COACHING: return ConversationState.STAGE_9_PROGRAM_FRAMING
     if current_state == ConversationState.STAGE_9_PROGRAM_FRAMING: return ConversationState.STAGE_10_QUAL_LOCATION
 
-    # --- QUALIFICATION (STRICT FILTER) ---
-    
-    # 1. Location
+    # --- QUALIFICATION PHASE ---
     if current_state == ConversationState.STAGE_10_QUAL_LOCATION:
         region = extracted_attributes.get("location_region")
         if region == "OTHER": return ConversationState.ROUTE_LOW_TICKET
         if region in {"US", "CANADA", "EU"}: return ConversationState.STAGE_10_QUAL_AGE
         return ConversationState.STAGE_10_QUAL_LOCATION
 
-    # 2. Age
     if current_state == ConversationState.STAGE_10_QUAL_AGE:
-        # We collect Age here. Logic is enforced at the end.
         return ConversationState.STAGE_10_QUAL_RELATIONSHIP
 
-    # 3. Relationship
     if current_state == ConversationState.STAGE_10_QUAL_RELATIONSHIP:
         return ConversationState.STAGE_10_QUAL_FITNESS
 
-    # 4. Fitness
     if current_state == ConversationState.STAGE_10_QUAL_FITNESS:
         return ConversationState.STAGE_10_QUAL_FINANCE
 
-    # 5. Finance (THE FINAL DECISION)
+    # --- FINAL ROUTING DECISION ---
     if current_state == ConversationState.STAGE_10_QUAL_FINANCE:
-        # Retrieve all qualifiers
         bucket = extracted_attributes.get("financial_bucket")
         region = extracted_attributes.get("location_region")
         raw_age = extracted_attributes.get("age", 0)
         
-        # Check Adult Status
+        # Check Adult
         is_adult = False
         try:
-            if int(raw_age) >= 18:
-                is_adult = True
-        except:
-            is_adult = False # Assume minor if unclear
+            if int(raw_age) >= 18: is_adult = True
+        except: is_adult = False
 
-        # Check Location (Double check)
+        # Check Location
         is_valid_loc = region in {"US", "CANADA", "EU"}
 
-        # STRICT RULE: High Ticket ONLY if Adult + Valid Loc + High Money
+        # STRICT RULE: Must be Adult + Valid Loc + High Money
         if bucket == "HIGH" and is_adult and is_valid_loc:
             return ConversationState.ROUTE_HIGH_TICKET
         
-        # Everyone else -> Low Ticket (Course)
         return ConversationState.ROUTE_LOW_TICKET
 
-    # TERMINAL STATES
+    # --- POST LINK HANDLING ---
+    if current_state == ConversationState.POST_LINK_FLOW:
+        return ConversationState.POST_LINK_FLOW
+
     if current_state in {ConversationState.ROUTE_HIGH_TICKET, ConversationState.ROUTE_LOW_TICKET}:
-        return ConversationState.END
+        return ConversationState.POST_LINK_FLOW
 
     return ConversationState.END

@@ -6,25 +6,17 @@ class Message(BaseModel):
     role: str
     content: str
 
-# INPUT SCHEMA (Request)
+# INPUT SCHEMA
 class AIRequest(BaseModel):
-    """
-    Input payload sent from the backend to the AI Setter service.
-    This represents one turn in the conversation.
-    """
     user_id: str = Field(..., description="Unique identifier for the user")
     message: str = Field(..., description="Latest message sent by the user")
-    current_state: str = Field(..., description="Current conversation state (e.g., RAPPORT, QUAL_LOCATION)")
+    current_state: str = Field(..., description="Current conversation state")
     user_attributes: Optional[Dict[str, Any]] = Field(default=None, description="Collected user attributes")
     history: Optional[List[Message]] = Field(default=[])
 
-# OUTPUT SCHEMA (Response)
+# OUTPUT SCHEMA
 class AIResponse(BaseModel):
-    """
-    Output payload returned by the AI Setter service to the backend.
-    """
-    reply: str = Field(..., description="The message the AI should send to the user")
-    next_state: str = Field(..., description="Next conversation state decided by the state machine")
+    reply: str
+    next_state: str
     extracted_attributes: Optional[Dict[str, Any]] = Field(default=None, description="New user attributes")
-    # --- NEW FIELD ---
     progress_score: int = Field(..., description="Lead progress from 0 to 100")

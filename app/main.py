@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
+from app.api.comment_routes import router as comment_router # <--- IMPORT
 
 app = FastAPI(
     title="Jamie AI Setter",
@@ -11,6 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(router)
+app.include_router(comment_router)  # New /process-comment
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")

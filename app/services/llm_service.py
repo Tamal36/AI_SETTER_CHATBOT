@@ -100,11 +100,29 @@ class LLMService:
             return None
 
     def check_off_topic(self, user_message: str) -> str | None:
-        identity_keywords = ["are you real", "are you really jamie", "is this a bot", "is this ai", "who is this"]
-        if any(k in user_message.lower() for k in identity_keywords):
-            return "oh no, sorry, i’m amanda, her assistant. i monitor her social accounts. it’s nice to meet you :)"
-        if "why are you asking" in user_message.lower():
+        """
+        Detects if the user is asking a meta-question.
+        """
+        user_lower = user_message.lower()
+
+        # 1. Identity Check ("Is this Jamie?") - CLIENT PDF RULE
+        identity_keywords = [
+            "are you real", "are you really jamie", "is this a bot", "who am I speaking", "Am I talking to a bot"
+            "is this ai", "who is this", "are you human", "is this jamie"
+        ]
+        
+        if any(k in user_lower for k in identity_keywords):
+            # EXACT SCRIPT FROM PDF
+            return (
+                "Oh no! Sorry for the confusion. This is Amanda, I’m on Jamie’s team. "
+                "I’m just here to understand what guys are going through in dating "
+                "so Jamie can better direct her coaching"
+            )
+
+        # 2. "Why" Check (Defensiveness)
+        if "why are you asking" in user_lower or "why do you need to know" in user_lower:
             return "just trying to get a better picture of where you're at so i can see if we can actually help."
+        
         return None
 
     def classify_post_link_intent(self, text: str) -> str:

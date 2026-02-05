@@ -14,8 +14,10 @@ class LLMService:
             raise ValueError("OPENAI_API_KEY is not set")
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
-        self.brain_model = "gpt-5.2"
-        self.voice_model = "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
+        self.brain_model = "gpt-5.2" 
+        self.voice_model = (
+            "ft:gpt-4o-mini-2024-07-18:jamie-date:human-chat:CIbbXDDz:ckpt-step-34"
+        )
         self.brain_temperature = 0.2
         self.voice_temperature = 0.5
         self.max_output_tokens = 150
@@ -34,7 +36,11 @@ class LLMService:
 
     def _prepare_response(self, system_prompt: str, state_prompt: str, user_message: str, history: List[Dict]) -> str:
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history[-10:])
+        
+        # ✅ FIX: Increased context window from 10 to 20
+        # This solves the "Amnesia" where it forgets the user's goal
+        messages.extend(history[-20:]) 
+        
         final_prompt = f"{state_prompt}\n\n[CURRENT USER MESSAGE]:\n{user_message}"
         messages.append({"role": "user", "content": final_prompt})
 
@@ -66,6 +72,7 @@ class LLMService:
         )
         return self._extract_text(response)
 
+    # --- PUBLIC API ---
     def generate_response(self, system_prompt: str, state_prompt: str, user_message: str, history: List[Dict]) -> str:
         draft = self._prepare_response(system_prompt, state_prompt, user_message, history)
         if not draft: return "Hmm, tell me more."
@@ -76,7 +83,16 @@ class LLMService:
 
     def extract_attribute(self, text: str, attribute_type: str) -> str | None:
         prompts = {
-            "location": "Extract location: 'US', 'CANADA', 'EU', 'OTHER'.",
+            "location": (
+                "Extract the location region.\n"
+                "Rules:\n"
+                "- If US, USA, United States, America -> Return 'US'\n"
+                "- If Canada -> Return 'CANADA'\n"
+                "- If UK, Europe, Germany, France, Italy, Spain, etc. -> Return 'EU'\n"
+                "- If anywhere else (Asia, Africa, Australia, South America) -> Return 'OTHER'\n"
+                "- If unknown/not mentioned -> Return 'UNKNOWN'\n"
+                "Output one word only."
+            ),
             "relationship_goal": "Classify goal: 'SERIOUS', 'CASUAL'.",
             "fitness": "Classify fitness: 'FIT', 'AVERAGE', 'UNFIT'.",
             "finance": "Classify finance: 'LOW', 'HIGH' (savings/invest/comfortable).",
@@ -100,46 +116,23 @@ class LLMService:
             return None
 
     def check_off_topic(self, user_message: str) -> str | None:
-        """
-        Detects if the user is asking a meta-question.
-        """
         user_lower = user_message.lower()
-
-        # 1. Identity Check ("Is this Jamie?") - CLIENT PDF RULE
         identity_keywords = [
-            "are you real", "are you really jamie", "is this a bot", "who am I speaking", "Am I talking to a bot"
-            "is this ai", "who is this", "are you human", "is this jamie"
+            "are you real", "are you really jamie", "is this a bot", 
+            "is this ai", "are you a bot", "are u a bot",
+            "who is this", "who are you", "who are u", "who r u",
+            "is this jamie"
         ]
         
         if any(k in user_lower for k in identity_keywords):
-            # EXACT SCRIPT FROM PDF
             return (
                 "Oh no! Sorry for the confusion. This is Amanda, I’m on Jamie’s team. "
                 "I’m just here to understand what guys are going through in dating "
-                "so Jamie can better direct her coaching"
+                "so Jamie can better direct her coaching. "
+                "But getting back to what we were saying..." 
             )
 
-        # 2. "Why" Check (Defensiveness)
         if "why are you asking" in user_lower or "why do you need to know" in user_lower:
             return "just trying to get a better picture of where you're at so i can see if we can actually help."
         
         return None
-
-    def classify_post_link_intent(self, text: str) -> str:
-        system_prompt = (
-            "Classify message intent:\n"
-            "- BOUGHT (e.g. 'I bought it', 'Done')\n"
-            "- QUESTION (e.g. 'Is it one time payment?')\n"
-            "- HESITATION (e.g. 'I will do it later')\n"
-            "- TECH_ISSUE (e.g. 'Link not working')\n"
-            "- NEGOTIATION (e.g. 'Discount?')\n"
-            "- OFF_TOPIC (e.g. 'Dating is hard')\n"
-            "Return ONLY the category name."
-        )
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini", temperature=0.0,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
-            )
-            return response.choices[0].message.content.strip().upper()
-        except: return "OFF_TOPIC"

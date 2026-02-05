@@ -1,7 +1,9 @@
 # JamieBot/app/state_machine/transitions.py
 from typing import Dict, Optional
 from app.state_machine.states import ConversationState
-from app.state_machine.exit_rules import normalize_text, entry_boundary_action, should_exit_entry
+from app.state_machine.exit_rules import (
+    normalize_text, entry_boundary_action, should_exit_entry
+)
 
 def determine_next_state(
     current_state: ConversationState,
@@ -26,9 +28,13 @@ def determine_next_state(
     if current_state == ConversationState.ENTRY_SOCIAL:
         return ConversationState.STAGE_1_PATTERN
 
-    # --- FUNNEL PHASE ---
+    # --- FUNNEL PHASE (LINEAR SPEED FIX) ---
+    
+    # STAGE 1: PATTERN
+    # ✅ FIX: Changed from >= 2 to >= 0. Moves immediately after 1st answer.
     if current_state == ConversationState.STAGE_1_PATTERN:
-        if turns >= 2: return ConversationState.STAGE_2_TIME_COST
+        if turns >= 0: 
+            return ConversationState.STAGE_2_TIME_COST
         return ConversationState.STAGE_1_PATTERN
 
     if current_state == ConversationState.STAGE_2_TIME_COST: return ConversationState.STAGE_3_ADDITIONAL
@@ -49,6 +55,14 @@ def determine_next_state(
         return ConversationState.STAGE_10_QUAL_LOCATION
 
     if current_state == ConversationState.STAGE_10_QUAL_AGE:
+        # ✅ FIX: Check if we can skip Relationship Question
+        # If the user already used keywords like "marriage", "wife", "long term" recently, 
+        # we can assume the goal is Serious and skip the question to avoid annoyance.
+        # Ideally, Orchestrator extracted this earlier, but simple keyword check helps here.
+        if any(w in normalized for w in ["marriage", "wife", "husband", "long term", "serious relationship"]):
+            extracted_attributes["relationship_goal"] = "SERIOUS"
+            return ConversationState.STAGE_10_QUAL_FITNESS
+            
         return ConversationState.STAGE_10_QUAL_RELATIONSHIP
 
     if current_state == ConversationState.STAGE_10_QUAL_RELATIONSHIP:
@@ -63,16 +77,13 @@ def determine_next_state(
         region = extracted_attributes.get("location_region")
         raw_age = extracted_attributes.get("age", 0)
         
-        # Check Adult
         is_adult = False
         try:
             if int(raw_age) >= 18: is_adult = True
         except: is_adult = False
 
-        # Check Location
         is_valid_loc = region in {"US", "CANADA", "EU"}
 
-        # STRICT RULE: Must be Adult + Valid Loc + High Money
         if bucket == "HIGH" and is_adult and is_valid_loc:
             return ConversationState.ROUTE_HIGH_TICKET
         

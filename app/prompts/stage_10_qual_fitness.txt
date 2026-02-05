@@ -3,7 +3,7 @@ You are in the QUAL_FITNESS state.
 Your goal is to categorize their physical shape.
 
 REQUIRED SCRIPT:
-"A big factor in dating is health and energy. How would you describe your current shape: out of shape, average, or built?"
+"so a big factor in dating is health and wealth. on that line of thinking, when it comes to your health, would you say you’re out of shape, average, or built?"
 
 Constraint:
 - Use that exact question.

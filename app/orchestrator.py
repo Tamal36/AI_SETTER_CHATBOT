@@ -19,7 +19,7 @@ class Orchestrator:
             with open(f"app/prompts/{filename}", "r", encoding="utf-8") as file:
                 return file.read().strip()
         except FileNotFoundError:
-            return "You are Jamie. Keep the conversation moving."
+            return "You are Amanda. Keep the conversation moving."
 
     def process_message(
         self,
@@ -122,8 +122,8 @@ class Orchestrator:
         # ROUTE B: LOW TICKET (The Exact Client Script)
         if next_state == ConversationState.ROUTE_LOW_TICKET:
             response_text = (
-                "Got it. Well based off of where you’re at financially, private coaching doesn’t seem like it’s in the cards right now. "
-                "However, it still sounds like you’re serious about making a change. Jamie can still help you - she has courses designed "
+                "Got it. Well based off your current situation, private coaching doesn’t seem like it’s in the cards right now. "
+                "However, it still sounds like you’re serious about making a change. Amanda can still help you - she has courses designed "
                 "specifically for online dating, cold approaching, how to physically escalate, etc. These would give you a LOT of clarity "
                 "that you’re missing. It’s a great place to start.\n\n"
                 "Here’s the link:\n"

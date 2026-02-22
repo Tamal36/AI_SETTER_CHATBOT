@@ -45,5 +45,5 @@ TEMPLATES = {
         "DM us for details" 
     ],
     # Special Overrides
-    "YOUTUBE_OVERRIDE": "I’ll explain everything properly 👍\nDM us on Instagram @yourpage"
+    "YOUTUBE_OVERRIDE": "I’ll explain everything properly 👍\nDM us on Instagram @jamiedate"
 }

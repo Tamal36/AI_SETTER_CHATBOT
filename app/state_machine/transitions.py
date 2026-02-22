@@ -20,7 +20,6 @@ def determine_next_state(
         action = entry_boundary_action(normalized, extracted_attributes)
         if action == "HARD_STOP": return ConversationState.END
         if action == "WARN_ABUSE": return ConversationState.ENTRY
-        
         if should_exit_entry(normalized): return ConversationState.STAGE_1_PATTERN
         if turns >= 1: return ConversationState.ENTRY_SOCIAL
         return ConversationState.ENTRY
@@ -28,13 +27,9 @@ def determine_next_state(
     if current_state == ConversationState.ENTRY_SOCIAL:
         return ConversationState.STAGE_1_PATTERN
 
-    # --- FUNNEL PHASE (LINEAR SPEED FIX) ---
-    
-    # STAGE 1: PATTERN
-    # ✅ FIX: Changed from >= 2 to >= 0. Moves immediately after 1st answer.
+    # --- FUNNEL PHASE ---
     if current_state == ConversationState.STAGE_1_PATTERN:
-        if turns >= 0: 
-            return ConversationState.STAGE_2_TIME_COST
+        if turns >= 0: return ConversationState.STAGE_2_TIME_COST # Speed Fix
         return ConversationState.STAGE_1_PATTERN
 
     if current_state == ConversationState.STAGE_2_TIME_COST: return ConversationState.STAGE_3_ADDITIONAL
@@ -50,19 +45,21 @@ def determine_next_state(
     # --- QUALIFICATION PHASE ---
     if current_state == ConversationState.STAGE_10_QUAL_LOCATION:
         region = extracted_attributes.get("location_region")
-        if region == "OTHER": return ConversationState.ROUTE_LOW_TICKET
-        if region in {"US", "CANADA", "EU"}: return ConversationState.STAGE_10_QUAL_AGE
-        return ConversationState.STAGE_10_QUAL_LOCATION
+        if region == "OTHER": 
+            # Failed location -> Check problem for routing
+            # We defer this decision to the final block, or handle intermediate exit?
+            # To allow collecting specific problem info if missing, we could continue,
+            # BUT standard flow is to finish qualification to get full picture.
+            # Let's continue to Age to mimic normal conversation, then filter at end.
+            pass 
+        if region in {"US", "CANADA", "EU"}: pass
+        return ConversationState.STAGE_10_QUAL_AGE
 
     if current_state == ConversationState.STAGE_10_QUAL_AGE:
-        # ✅ FIX: Check if we can skip Relationship Question
-        # If the user already used keywords like "marriage", "wife", "long term" recently, 
-        # we can assume the goal is Serious and skip the question to avoid annoyance.
-        # Ideally, Orchestrator extracted this earlier, but simple keyword check helps here.
+        # Check to skip relationship question if already answered
         if any(w in normalized for w in ["marriage", "wife", "husband", "long term", "serious relationship"]):
             extracted_attributes["relationship_goal"] = "SERIOUS"
             return ConversationState.STAGE_10_QUAL_FITNESS
-            
         return ConversationState.STAGE_10_QUAL_RELATIONSHIP
 
     if current_state == ConversationState.STAGE_10_QUAL_RELATIONSHIP:
@@ -71,29 +68,44 @@ def determine_next_state(
     if current_state == ConversationState.STAGE_10_QUAL_FITNESS:
         return ConversationState.STAGE_10_QUAL_FINANCE
 
-    # --- FINAL ROUTING DECISION ---
+    # --- FINAL ROUTING DECISION (The 3 Buckets) ---
     if current_state == ConversationState.STAGE_10_QUAL_FINANCE:
         bucket = extracted_attributes.get("financial_bucket")
         region = extracted_attributes.get("location_region")
         raw_age = extracted_attributes.get("age", 0)
+        problem_tag = str(extracted_attributes.get("primary_problem", "GENERAL")) # Get problem
         
+        # 1. Check Qualifications
         is_adult = False
         try:
             if int(raw_age) >= 18: is_adult = True
         except: is_adult = False
 
         is_valid_loc = region in {"US", "CANADA", "EU"}
+        is_high_finance = (bucket == "HIGH")
 
-        if bucket == "HIGH" and is_adult and is_valid_loc:
-            return ConversationState.ROUTE_HIGH_TICKET
+        # 2. Logic Tree
         
-        return ConversationState.ROUTE_LOW_TICKET
+        # BUCKET 1: DISCOVERY CALL (Qualified)
+        if is_adult and is_valid_loc and is_high_finance:
+            return ConversationState.ROUTE_DISCOVERY_CALL
+        
+        # BUCKET 2: COURSE SPECIFIC (Unqualified + Specific Problem)
+        if problem_tag != "GENERAL":
+            return ConversationState.ROUTE_COURSE_SPECIFIC
+            
+        # BUCKET 3: FREE GUIDE (Unqualified + Vague Problem)
+        return ConversationState.ROUTE_FREE_GUIDE
 
     # --- POST LINK HANDLING ---
     if current_state == ConversationState.POST_LINK_FLOW:
         return ConversationState.POST_LINK_FLOW
 
-    if current_state in {ConversationState.ROUTE_HIGH_TICKET, ConversationState.ROUTE_LOW_TICKET}:
+    if current_state in {
+        ConversationState.ROUTE_DISCOVERY_CALL, 
+        ConversationState.ROUTE_COURSE_SPECIFIC, 
+        ConversationState.ROUTE_FREE_GUIDE
+    }:
         return ConversationState.POST_LINK_FLOW
 
     return ConversationState.END

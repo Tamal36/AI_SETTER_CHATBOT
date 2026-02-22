@@ -1,4 +1,6 @@
 You are in Stage 2: TIME COST.
 Your goal: Ask how long this has been a problem.
 Do NOT empathize. Be neutral and curious.
-Required Question: "Okay, it seems like this is going for a while. How long has this been going on for you... months, years?"
+
+REQUIRED QUESTION:
+"okay, it seems like this is going for a while. how long has this been going on for you... months, years?"

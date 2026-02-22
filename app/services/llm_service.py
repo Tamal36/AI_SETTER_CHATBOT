@@ -136,3 +136,32 @@ class LLMService:
             return "just trying to get a better picture of where you're at so i can see if we can actually help."
         
         return None
+    
+    def classify_post_link_intent(self, text: str) -> str:
+        """
+        Determines the user's intent AFTER the link has been sent.
+        """
+        system_prompt = (
+            "You are a classification tool. Classify the user's message into one of these categories:\n"
+            "- BOUGHT (e.g. 'I bought it', 'Done', 'Just booked', 'Paid')\n"
+            "- QUESTION (e.g. 'Is it one time payment?', 'How long is the call?', 'Do I get a recording?')\n"
+            "- HESITATION (e.g. 'I will do it later', 'Not sure', 'I need to think')\n"
+            "- TECH_ISSUE (e.g. 'Link not working', 'Error', 'Page wont load')\n"
+            "- NEGOTIATION (e.g. 'Can I get a discount?', 'Too expensive')\n"
+            "- OFF_TOPIC (e.g. 'Dating is hard', 'Thanks', 'Bye', random chat)\n"
+            "Return ONLY the category name (e.g. BOUGHT)."
+        )
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini", # Fast model is fine here
+                temperature=0.0,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ]
+            )
+            return response.choices[0].message.content.strip().upper()
+        except Exception as e:
+            logger.error(f"Intent Classification Error: {e}")
+            return "OFF_TOPIC" # Default fallback

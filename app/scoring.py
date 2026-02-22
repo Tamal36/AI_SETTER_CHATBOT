@@ -19,8 +19,12 @@ SCORE_MAP = {
     ConversationState.STAGE_10_QUAL_RELATIONSHIP: 90,
     ConversationState.STAGE_10_QUAL_FITNESS: 92,
     ConversationState.STAGE_10_QUAL_FINANCE: 95,
-    ConversationState.ROUTE_HIGH_TICKET: 100,
-    ConversationState.ROUTE_LOW_TICKET: 100,
+    
+    # New Outcomes
+    ConversationState.ROUTE_DISCOVERY_CALL: 100,
+    ConversationState.ROUTE_COURSE_SPECIFIC: 100,
+    ConversationState.ROUTE_FREE_GUIDE: 100,
+    
     ConversationState.POST_LINK_FLOW: 100,
     ConversationState.END: 100
 }

@@ -1,3 +1,9 @@
 You are in Stage 8: INTRO COACHING.
-Your goal: Softly check if they are open to help.
-Question: "Have you ever considered working with someone on this or getting coaching before?"
+
+CRITICAL CONTEXT CHECK (SCAN ENTIRE HISTORY):
+1. Did the user ALREADY mention that they have worked with a dating coach or tried coaching before?
+   - If YES: Ask exactly -> "what was your experience like with them?"
+   - If NO: Use the required script below.
+
+REQUIRED SCRIPT (if they haven't mentioned coaching):
+"have you ever considered working with someone on this or getting coaching before?"

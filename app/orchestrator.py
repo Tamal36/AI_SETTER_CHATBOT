@@ -19,7 +19,7 @@ class Orchestrator:
             with open(f"app/prompts/{filename}", "r", encoding="utf-8") as file:
                 return file.read().strip()
         except FileNotFoundError:
-            return "You are Amanda. Keep the conversation moving."
+            return "You are Jamie. Keep the conversation moving."
 
     def process_message(
         self,
@@ -31,117 +31,85 @@ class Orchestrator:
         
         if extracted_attributes is None: extracted_attributes = {}
         
-        # --- 1. SAFETY GUARDRAIL ---
+        # 1. SAFETY & OFF-TOPIC
         if not validate_safety(user_message):
-            return {
-                "reply": "I’m not the right person for this. You can try OnlyFans for that 😂. Now..if you want help with a real dating strategy, I’m happy to help.",
-                "next_state": current_state.value, 
-                "extracted_attributes": extracted_attributes,
-                "progress_score": calculate_score(current_state)
-            }
+            return {"reply": "I’m not the right person for this...", "next_state": current_state.value, "extracted_attributes": extracted_attributes, "progress_score": calculate_score(current_state)}
 
-        # --- 2. OFF-TOPIC GUARDRAIL ---
         off_topic_response = self.llm_service.check_off_topic(user_message)
         if off_topic_response:
-            return {
-                "reply": off_topic_response + " anyway... back to what we were saying.",
-                "next_state": current_state.value, 
-                "extracted_attributes": extracted_attributes,
-                "progress_score": calculate_score(current_state)
-            }
+            return {"reply": off_topic_response + " anyway... back to what we were saying.", "next_state": current_state.value, "extracted_attributes": extracted_attributes, "progress_score": calculate_score(current_state)}
 
-        # --- 3. SEMANTIC EXTRACTION ---
+        # 2. EXTRACTION
         if current_state == ConversationState.STAGE_10_QUAL_LOCATION:
             loc = self.llm_service.extract_attribute(user_message, "location")
             if loc: extracted_attributes["location_region"] = loc
-            
         elif current_state == ConversationState.STAGE_10_QUAL_FINANCE:
             fin = self.llm_service.extract_attribute(user_message, "finance")
             if fin: extracted_attributes["financial_bucket"] = fin
-            
         elif current_state == ConversationState.STAGE_10_QUAL_AGE:
             age_raw = self.llm_service.extract_attribute(user_message, "age")
             try:
                 age_num = re.search(r'\d+', str(age_raw))
-                if age_num:
-                    extracted_attributes["age"] = int(age_num.group())
-                else:
-                    extracted_attributes["age"] = 0 
-            except:
-                extracted_attributes["age"] = 0
+                if age_num: extracted_attributes["age"] = int(age_num.group())
+            except: extracted_attributes["age"] = 0
 
         if "primary_problem" not in extracted_attributes:
             normalized = normalize_text(user_message)
             inferred_problem = infer_problem_tag(normalized)
-            if inferred_problem != ProblemTag.GENERAL:
-                extracted_attributes["primary_problem"] = inferred_problem
+            if inferred_problem != ProblemTag.GENERAL: extracted_attributes["primary_problem"] = inferred_problem
 
-        # --- DETERMINE NEXT STATE ---
-        next_state = determine_next_state(
-            current_state=current_state,
-            user_message=user_message,
-            extracted_attributes=extracted_attributes,
-        )
-
-        # --- TURN COUNT MANAGEMENT ---
-        state_turn_count = extracted_attributes.get("current_state_turn_count", 0)
-        if next_state != current_state:
-            extracted_attributes["current_state_turn_count"] = 0
-        else:
-            extracted_attributes["current_state_turn_count"] = state_turn_count + 1
-
-        # --- 4. ROUTING LOGIC ---
+        # 3. TRANSITION
+        next_state = determine_next_state(current_state, user_message, extracted_attributes)
         
-        # ROUTE A: HIGH TICKET (Specific Paid Course)
-        if next_state == ConversationState.ROUTE_HIGH_TICKET:
-            # 1. Resolve Problem Tag
-            raw_tag = extracted_attributes.get("primary_problem")
-            if isinstance(raw_tag, str):
-                try: problem_tag = ProblemTag(raw_tag)
-                except ValueError: problem_tag = ProblemTag.GENERAL
-            elif raw_tag:
-                problem_tag = raw_tag
-            else:
-                problem_tag = ProblemTag.GENERAL
-            
-            # 2. Get Matching Product
-            product = get_product_for_problem(problem_tag)
+        state_turn_count = extracted_attributes.get("current_state_turn_count", 0)
+        if next_state != current_state: extracted_attributes["current_state_turn_count"] = 0
+        else: extracted_attributes["current_state_turn_count"] = state_turn_count + 1
 
+        # --- 4. ROUTING LOGIC (THE 3 OUTCOMES) ---
+        
+        # OUTCOME 1: DISCOVERY CALL (Qualified)
+        if next_state == ConversationState.ROUTE_DISCOVERY_CALL:
             response_text = (
-                "Perfect. Based on what you told me, you’re a great fit for this specific program.\n\n"
-                f"It’s called **{product.name}**, and it fixes exactly what we talked about.\n\n"
-                f"You can grab it here (and use code JDate10 for 10% off):\n{product.link}"
+                "Perfect. Based on what you told me, you’re a good fit for private coaching.\n\n"
+                "The easiest next step is a quick 1:1 call so I can map out the fastest plan for you.\n\n"
+                "Here’s the link to book a time that works for you:\n"
+                "https://www.jamiedatecoaching.com/privatecoaching"
             )
-            return {
-                "reply": response_text, 
-                "next_state": ConversationState.POST_LINK_FLOW.value, 
-                "extracted_attributes": extracted_attributes,
-                "progress_score": 100
-            }
+            return {"reply": response_text, "next_state": ConversationState.POST_LINK_FLOW.value, "extracted_attributes": extracted_attributes, "progress_score": 100}
 
-        # ROUTE B: LOW TICKET (The Exact Client Script)
-        if next_state == ConversationState.ROUTE_LOW_TICKET:
+        # OUTCOME 2: SPECIFIC COURSE (Unqualified + Specific Problem)
+        if next_state == ConversationState.ROUTE_COURSE_SPECIFIC:
+            # Resolve Product
+            raw_tag = extracted_attributes.get("primary_problem", "GENERAL")
+            if isinstance(raw_tag, str): 
+                try: problem_tag = ProblemTag(raw_tag)
+                except: problem_tag = ProblemTag.GENERAL
+            else: problem_tag = raw_tag
+            
+            product = get_product_for_problem(problem_tag)
+            
             response_text = (
                 "Got it. Well based off your current situation, private coaching doesn’t seem like it’s in the cards right now. "
-                "However, it still sounds like you’re serious about making a change. Amanda can still help you - she has courses designed "
-                "specifically for online dating, cold approaching, how to physically escalate, etc. These would give you a LOT of clarity "
-                "that you’re missing. It’s a great place to start.\n\n"
-                "Here’s the link:\n"
-                "https://www.jamiedatecoaching.com/courses\n"
-                "(and just for talking to me, I’ll give you the 10% off code. Just use: JDate10 at checkout)"
+                "However, it still sounds like you’re serious about making a change. Amanda can still help you - she has a course designed "
+                f"specifically for this called **{product.name}**. It would give you a LOT of clarity.\n\n"
+                f"You can grab it here (and use code JDate10 for 10% off):\n{product.link}"
             )
-            return {
-                "reply": response_text, 
-                "next_state": ConversationState.POST_LINK_FLOW.value, 
-                "extracted_attributes": extracted_attributes,
-                "progress_score": 100
-            }
+            return {"reply": response_text, "next_state": ConversationState.POST_LINK_FLOW.value, "extracted_attributes": extracted_attributes, "progress_score": 100}
 
-        # --- 5. POST LINK HANDLING ---
+        # OUTCOME 3: FREE GUIDE / GENERAL (Unqualified + Vague)
+        if next_state == ConversationState.ROUTE_FREE_GUIDE:
+            response_text = (
+                "Got it. Based on where you're at, I want to make sure you have the right resources without overcommitting.\n\n"
+                "I have a full library of self-guided courses and resources here. Take a look and see which one feels right for you:\n"
+                "https://www.jamiedatecoaching.com/courses\n\n"
+                "(You can use code JDate10 for 10% off too!)"
+            )
+            return {"reply": response_text, "next_state": ConversationState.POST_LINK_FLOW.value, "extracted_attributes": extracted_attributes, "progress_score": 100}
+
+        # 5. POST LINK HANDLING
         if current_state == ConversationState.POST_LINK_FLOW:
             intent = self.llm_service.classify_post_link_intent(user_message)
             prompt_file = "post_link_off_topic.txt"
-            
             if intent == "BOUGHT": prompt_file = "post_link_bought.txt"
             elif intent == "QUESTION": prompt_file = "post_link_question.txt"
             elif intent == "HESITATION": prompt_file = "post_link_hesitation.txt"
@@ -150,38 +118,15 @@ class Orchestrator:
             
             system_prompt = self._load_prompt("system.txt")
             state_prompt = self._load_prompt(prompt_file)
-            
-            response_text = self.llm_service.generate_response(
-                system_prompt=system_prompt,
-                state_prompt=state_prompt,
-                user_message=user_message,
-                history=history
-            )
-            
-            return {
-                "reply": response_text,
-                "next_state": ConversationState.POST_LINK_FLOW.value,
-                "extracted_attributes": extracted_attributes,
-                "progress_score": 100
-            }
+            response_text = self.llm_service.generate_response(system_prompt, state_prompt, user_message, history)
+            return {"reply": response_text, "next_state": ConversationState.POST_LINK_FLOW.value, "extracted_attributes": extracted_attributes, "progress_score": 100}
 
-        # --- 6. NORMAL FLOW GENERATION ---
+        # 6. NORMAL GENERATION
         if next_state == ConversationState.END:
             return {"reply": "Got it. I’ll leave things there for now.", "next_state": next_state.value, "progress_score": 100}
 
         system_prompt = self._load_prompt("system.txt")
         state_prompt = self._load_prompt(f"{next_state.value.lower()}.txt")
-
-        response_text = self.llm_service.generate_response(
-            system_prompt=system_prompt,
-            state_prompt=state_prompt,
-            user_message=user_message,
-            history=history 
-        )
+        response_text = self.llm_service.generate_response(system_prompt, state_prompt, user_message, history)
         
-        return {
-            "reply": response_text,
-            "next_state": next_state.value,
-            "extracted_attributes": extracted_attributes,
-            "progress_score": calculate_score(next_state)
-        }
+        return {"reply": response_text, "next_state": next_state.value, "extracted_attributes": extracted_attributes, "progress_score": calculate_score(next_state)}

@@ -15,6 +15,7 @@ class ConversationState(str, Enum):
     STAGE_7_REFRAME = "STAGE_7_REFRAME"
     STAGE_8_INTRO_COACHING = "STAGE_8_INTRO_COACHING"
     STAGE_9_PROGRAM_FRAMING = "STAGE_9_PROGRAM_FRAMING"
+
     
     # Qualification
     STAGE_10_QUAL_LOCATION = "STAGE_10_QUAL_LOCATION"
@@ -23,9 +24,10 @@ class ConversationState(str, Enum):
     STAGE_10_QUAL_FITNESS = "STAGE_10_QUAL_FITNESS"
     STAGE_10_QUAL_FINANCE = "STAGE_10_QUAL_FINANCE"
     
-    # Routing
-    ROUTE_HIGH_TICKET = "ROUTE_HIGH_TICKET"
-    ROUTE_LOW_TICKET = "ROUTE_LOW_TICKET"
+    # --- NEW: 3-WAY ROUTING ---
+    ROUTE_DISCOVERY_CALL = "ROUTE_DISCOVERY_CALL"     # Qualified -> Call
+    ROUTE_COURSE_SPECIFIC = "ROUTE_COURSE_SPECIFIC"   # Unqualified + Problem -> Course
+    ROUTE_FREE_GUIDE = "ROUTE_FREE_GUIDE"             # Unqualified + Vague -> Free/General
     
     # Post-Link Handling
     POST_LINK_FLOW = "POST_LINK_FLOW"
